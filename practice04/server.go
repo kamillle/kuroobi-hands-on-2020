@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"path"
@@ -48,11 +49,31 @@ var (
 )
 
 // 4-1. ランダム文字列を生成
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
+var randLetters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+
+func generateRandomString() string {
+	result := make([]rune, 32)
+	for i := range result {
+		result[i] = randLetters[rand.Intn(len(randLetters))]
+	}
+	return string(result)
+}
 
 // AuthorizationリクエストのURLを生成
 func index(w http.ResponseWriter, r *http.Request) {
 	log.Println("[[ login started ]]")
 	// 4-2. セッションCookieに紐付けるstate値を生成し保存
+	state := generateRandomString()
+	stateCookie := &http.Cookie{
+		Name:     "state",
+		Value:    state,
+		HttpOnly: true,
+	}
+	http.SetCookie(w, stateCookie)
 
 	// 5-1. セッションCookieに紐付けるnonce値を生成し保存
 
@@ -75,6 +96,7 @@ func index(w http.ResponseWriter, r *http.Request) {
 	// 1-12. ログイン画面と同意画面の強制表示
 	q.Set("prompt", "login consent")
 	// 4-3. セッションCookieに紐づけたstate値を指定
+	q.Set("state", state)
 
 	// 5-2. セッションCookieに紐づけたnonce値を指定
 	q.Set("nonce", "NONCE_STUB")
@@ -113,10 +135,34 @@ func callback(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 
 	// 4-4. redirect_uriからstate値の抽出
+	stateQuery, ok := query["state"]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		errorTemplate.Execute(w, "state query not found")
+		return
+	}
+	state := stateQuery[0]
+	storedState, err := r.Cookie("state")
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		errorTemplate.Execute(w, "state cookie error")
+		return
+	}
 
 	// 4-5. セッションCookieに紐づけていたstate値の破棄
+	stateCookie := &http.Cookie{
+		Name:   "state",
+		MaxAge: -1,
+	}
+	http.SetCookie(w, stateCookie)
 
 	// 4-6. state値の検証
+	if state != storedState.Value {
+		w.WriteHeader(http.StatusBadRequest)
+		errorTemplate.Execute(w, "state does not match stored one")
+		return
+	}
+	log.Println("success to verify state")
 
 	// 2-2. Tokenリクエスト
 	values := url.Values{}
