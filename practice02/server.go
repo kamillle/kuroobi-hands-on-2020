@@ -1,12 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"path"
+	"strings"
 	"time"
 
 	// 1-6. 設定パッケージのインポート
@@ -82,6 +86,13 @@ func index(w http.ResponseWriter, r *http.Request) {
 }
 
 // 2-4. TokenエンドポイントのJSONレスポンスの結果を格納する構造体
+type TokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"`
+	IDToken      string `json:"id_token"`
+}
 
 // 3-2. UserInfoエンドポイントのJSONレスポンスの結果を格納する構造体
 
@@ -95,6 +106,7 @@ func index(w http.ResponseWriter, r *http.Request) {
 // UserInfoエンドポイントからユーザー属性情報の取得
 func callback(w http.ResponseWriter, r *http.Request) {
 	// 2-1. クエリを取得
+	query := r.URL.Query()
 
 	// 4-4. redirect_uriからstate値の抽出
 
@@ -103,10 +115,43 @@ func callback(w http.ResponseWriter, r *http.Request) {
 	// 4-6. state値の検証
 
 	// 2-2. Tokenリクエスト
+	values := url.Values{}
+	values.Set("grant_type", "authorization_code")
+	values.Add("client_id", config.ClientID)
+	values.Add("client_secret", config.ClientSecret)
+	values.Add("redirect_uri", config.RedirectURI)
 
 	// 2-3. redirect_uriからAuthorization Codeを抽出
+	values.Add("code", query["code"][0])
+	tokenResponse, err := http.Post(config.OIDCURL+"/yconnect/v2/token",
+		"application/x-www-form-urlencoded",
+		strings.NewReader(values.Encode()))
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		errorTemplate.Execute(w, "failed to post request")
+		return
+	}
+	defer func() {
+		_, err = io.Copy(ioutil.Discard, tokenResponse.Body) // discardで第２引数のバイトを捨てる
+		if err != nil {
+			log.Panic(err)
+		}
+		err = tokenResponse.Body.Close()
+		if err != nil {
+			log.Panic(err)
+		}
+	}()
 
 	// 2-5. Tokenレスポンスを構造体に格納
+	var tokenData TokenResponse
+	err = json.NewDecoder(tokenResponse.Body).Decode(&tokenData)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		errorTemplate.Execute(w, "failed to read token's json body")
+		return
+	}
+	log.Println("requested token endpoint")
 
 	// 5-3. ID Tokenのデータ部の分解
 
