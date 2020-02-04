@@ -95,6 +95,10 @@ type TokenResponse struct {
 }
 
 // 3-2. UserInfoエンドポイントのJSONレスポンスの結果を格納する構造体
+type UserInfoResponse struct {
+	Subject string `json:"sub"`
+	Email   string `json:"email"`
+}
 
 // 5-5. ID Tokenのヘッダーを格納する構造体
 
@@ -192,10 +196,48 @@ func callback(w http.ResponseWriter, r *http.Request) {
 	// - idTokenPayload.AuthenticationMethodReference
 
 	// 3-1. UserInfoリクエスト
-
+	userInfoRequest, err := http.NewRequest(
+		"POST",
+		"https://userinfo.yahooapis.jp/yconnect/v2/attribute",
+		nil,
+	)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		errorTemplate.Execute(w, "failed to create user attribute request")
+		return
+	}
+	userInfoRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	userInfoRequest.Header.Set("Authorization", "Bearer "+tokenData.AccessToken)
+	userInfoResponse, err := http.DefaultClient.Do(userInfoRequest)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		errorTemplate.Execute(w, "failed to user attribute request")
+		return
+	}
+	defer func() {
+		_, err = io.Copy(ioutil.Discard, userInfoResponse.Body)
+		if err != nil {
+			log.Panic(err)
+		}
+		err = userInfoResponse.Body.Close()
+		if err != nil {
+			log.Panic(err)
+		}
+	}()
 	// 3-3. UserInfoレスポンスを構造体に格納
+	var userInfoData UserInfoResponse
+	err = json.NewDecoder(userInfoResponse.Body).Decode(&userInfoData)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		errorTemplate.Execute(w, "failed to parse user info json")
+		return
+	}
+	log.Println("requested userinfo endpoint")
 
 	// 5-25. sub値の検証
 
 	// 3-4. 構造体にユーザー属性情報をセットしcallback.htmlをレンダリング
+	w.WriteHeader(http.StatusOK)
+	callbackTemplate.Execute(w, userInfoData)
+	log.Println("[[ login completed ]]")
 }
