@@ -1,19 +1,48 @@
 package main
 
 import (
+	"fmt"
+	"html/template"
 	"log"
 	"net/http"
+	"net/url"
+	"path"
+	"time"
+
 	// 1-6. 設定パッケージのインポート
+	"github.com/kura-lab/kuroobi-hands-on-2020/config"
 )
 
 func main() {
 	// 1-1. マルチプレクサにハンドラを登録
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, fmt.Sprintf("http://localhost:%d/index", config.Port), http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("/index", index)
+	mux.HandleFunc("/callback", callback)
 
 	// 1-2. サーバー設定
-
+	server := &http.Server{
+		Addr:           fmt.Sprintf("0.0.0.0:%d", config.Port),
+		Handler:        mux,
+		ReadTimeout:    time.Second * 10,
+		WriteTimeout:   time.Second * 600,
+		MaxHeaderBytes: 1 << 20, // 1MB
+	}
+	err := server.ListenAndServe() // server起動
+	// server起動できなかった時
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 // 1-7. テンプレートをレンダリング
+var (
+	indexTemplate    = template.Must(template.ParseFiles("../templates/index.html"))
+	callbackTemplate = template.Must(template.ParseFiles("../templates/callback.html"))
+	errorTemplate    = template.Must(template.ParseFiles("../templates/error.html"))
+)
 
 // 4-1. ランダム文字列を生成
 
@@ -25,21 +54,36 @@ func index(w http.ResponseWriter, r *http.Request) {
 	// 5-1. セッションCookieに紐付けるnonce値を生成し保存
 
 	// 1-8. AuthorizationリクエストURL生成
-
-	// 1-9. 構造体にエラー文言を格納してerror.htmlをレンダリング
+	u, err := url.Parse(config.OIDCURL)
+	if err != nil {
+		// 1-9. 構造体にエラー文言を格納してerror.htmlをレンダリング
+		w.WriteHeader(http.StatusInternalServerError)
+		errorTemplate.Execute(w, "url parse error")
+		return
+	}
+	u.Path = path.Join(u.Path, "yconnect/v2/authorization")
+	q := u.Query()
 
 	// 1-10. response_typeにAuthorization Code Flowを指定
+	q.Set("response_type", "code")
+	q.Set("client_id", config.ClientID)
+	q.Set("redirect_uri", config.RedirectURI)
 
 	// 1-11. UserInfoエンドポイントから取得するscopeを指定
+	q.Set("scope", "openid email")
 
 	// 1-12. ログイン画面と同意画面の強制表示
+	q.Set("prompt", "login consent")
+	q.Set("nonce", "NONCE_STUB")
+	u.RawQuery = q.Encode() // URL structのRawQueryフィールドにエンコードしたクエリパラメータをset
 
 	// 4-3. セッションCookieに紐づけたstate値を指定
 
 	// 5-2. セッションCookieに紐づけたnonce値を指定
 
 	// 1-13. 構造体にURLをセットしindex.htmlをレンダリング
-
+	w.WriteHeader(http.StatusOK)
+	indexTemplate.Execute(w, u.String())
 }
 
 // 2-4. TokenエンドポイントのJSONレスポンスの結果を格納する構造体
