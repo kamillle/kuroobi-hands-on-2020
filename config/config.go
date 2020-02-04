@@ -8,8 +8,8 @@ const (
 
 // 1-3. Client ID、Client Secretを定義
 const (
-	ClientID     = "dj00aiZpPWJjUURCN0RpZ3dvZSZzPWNvbnN1bWVyc2VjcmV0Jng9OWM-"
-	ClientSecret = "mQaUQeSHXdQ2UvPVivSW2Hyxkp1yZTKVUO2Uh2Hl"
+	ClientID     = ""
+	ClientSecret = ""
 )
 
 // 1-4. リダイレクトURIを定義
