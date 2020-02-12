@@ -1,6 +1,9 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+)
 
 const (
 	Port = 8080
@@ -8,8 +11,8 @@ const (
 
 // 1-3. Client ID、Client Secretを定義
 const (
-	ClientID     = ""
-	ClientSecret = ""
+	ClientID     = os.Getenv("YAHOO_CLIENT_ID")
+	ClientSecret = os.Getenv("YAHOO_CLIENT_SECRET")
 )
 
 // 1-4. リダイレクトURIを定義
